@@ -2,11 +2,17 @@ import asyncio
 import json
 import random
 import os
+import logging
 from datetime import datetime
+from typing import Callable, Dict, Any, Awaitable
+
 from dotenv import load_dotenv
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.types import InlineQueryResultArticle, InputTextMessageContent
+from aiogram import Bot, Dispatcher, types, F, BaseMiddleware
+from aiogram.types import InlineQueryResultArticle, InputTextMessageContent, TelegramObject
 from zoneinfo import ZoneInfo
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
@@ -17,6 +23,22 @@ if not TOKEN:
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
+# --- ХРАНИЛИЩЕ ПОЛЬЗОВАТЕЛЕЙ ---
+seen_users = {}
+
+class UserTrackingMiddleware(BaseMiddleware):
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: Dict[str, Any]
+    ) -> Any:
+        user = data.get("event_from_user")
+        if user and not user.is_bot:
+            seen_users[user.id] = user.first_name
+        return await handler(event, data)
+
+dp.message.middleware(UserTrackingMiddleware())
 
 # --- ФУНКЦИИ РАБОТЫ С ДАННЫМИ ---
 
@@ -28,9 +50,9 @@ def get_random_quote():
             quotes = json.load(f)
             quote_data = random.choice(quotes)
             return quote_data.get('text', "Текст не найден") if isinstance(quote_data, dict) else str(quote_data)
-    except:
+    except Exception as e:
+        logging.error(f"Ошибка чтения цитат: {e}")
         return "Цитаты временно закончились..."
-
 
 def get_today_holiday():
     try:
@@ -52,9 +74,48 @@ def get_today_holiday():
         print(f"Ошибка парсинга праздников: {e}")
         return None
 
+# --- ОБРАБОТЧИКИ (HANDLERS) ---
 
-# --- ОБРАБОТЧИКИ ---
+# !!! ВАЖНО: Команды /start и /menu должны быть ПЕРВЫМИ !!!
 
+@dp.message(F.text == "/start")
+async def cmd_start(message: types.Message):
+    await message.answer(
+        f"Привет, {message.from_user.first_name}! 👋\n"
+        "Я Митя — твой универсальный компаньон.\n"
+        "Напиши /menu, чтобы узнать, что я умею."
+    )
+
+@dp.message(F.text == "/menu")
+async def cmd_menu(message: types.Message):
+    menu_text = (
+        "🤖 **Что я умею:**\n\n"
+        "📜 **Цитаты:** Напиши 'Митя, выдай цитату'.\n"
+        "🎲 **Выбор:** Напиши 'Митя, выбери пиво или квас'.\n"
+        "🔮 **Шанс:** Напиши 'Митя, какой шанс на успех?'.\n"
+        "🏆 **Игры:** Напиши 'Митя, кто сегодня красавчик?'.\n"
+        "🎉 **Праздники:** Ищи в инлайн-режиме (@ ник бота).\n\n"
+        "Просто напиши мне, и я отвечу!"
+    )
+    await message.answer(menu_text, parse_mode="Markdown")
+# Реакция на вопросы о способностях в обычном чате
+@dp.message(F.text.lower().contains("митя") & 
+           (F.text.lower().contains("умеешь") | 
+            F.text.lower().contains("можешь") | 
+            F.text.lower().contains("помощь") | 
+            F.text.lower().contains("че делаешь")))
+async def mitya_info_text(message: types.Message):
+    info_text = (
+        "Меня звали? 😎 Вот краткий список того, чем я полезен:\n\n"
+        "📜 **Цитаты:** Напиши 'Митя, выдай цитату'.\n"
+        "🎲 **Выбор:** Напиши 'Митя, выбери [чай] или [кофе]'.\n"
+        "🔮 **Шанс:** Напиши 'Митя, какой шанс, что [событие]?'.\n"
+        "🏆 **Игры:** Напиши 'Митя, кто сегодня [лох/красавчик/гений]?'.\n"
+        "✨ **Инлайн:** В любом чате введи `@bot_mitya_b` (через пробел), чтобы отправить цитату или праздник.\n\n"
+        "Полный список команд — /menu"
+    )
+    await message.answer(info_text)
+# 2. Инлайн-режим
 @dp.inline_query()
 async def inline_handler(query: types.InlineQuery):
     user_name = query.from_user.first_name or "Друг"
@@ -102,22 +163,54 @@ async def inline_handler(query: types.InlineQuery):
 
     await query.answer(results, cache_time=1)
 
-
+# 3. Текстовые игры
 @dp.message(F.text.lower().contains("митя, выдай цитату"))
 async def quote_handler(message: types.Message):
     await message.answer(f"📜 {get_random_quote()}")
 
+@dp.message(F.text.lower().startswith("митя, кто"))
+async def who_is_handler(message: types.Message):
+    if not seen_users:
+        await message.answer("Я пока никого не знаю. Напишите что-нибудь в чат!")
+        return
+    winner = random.choice(list(seen_users.values()))
+    question = message.text.lower().replace("митя, кто", "").strip().rstrip("?")
+    if not question: question = "сегодня везунчик"
+    await message.answer(f"🤔 Анализирую чат...\n✨ {question.capitalize()} — это **{winner}**! 🏆")
+
+@dp.message(F.text.lower().startswith("митя, выбери"))
+async def choose_handler(message: types.Message):
+    content = message.text[12:].lower()
+    if " или " in content:
+        options = [opt.strip() for opt in content.split(" или ") if opt.strip()]
+        await message.answer(f"🎲 Мой выбор: **{random.choice(options)}**")
+    else:
+        await message.answer("Используй 'или'. Пример: Митя, выбери А или Б")
+
+@dp.message(F.text.lower().contains("шанс") | F.text.lower().contains("вероятность"))
+async def chance_handler(message: types.Message):
+    if "митя" in message.text.lower():
+        percent = random.randint(0, 100)
+        await message.answer(f"🔮 Вероятность: **{percent}%**")
 
 @dp.message(F.text.lower().contains("пидор"))
 async def insult_handler(message: types.Message):
     user_name = message.from_user.first_name or "Друг"
     await message.answer(f"Пидор - {user_name}!", reply_to_message_id=message.message_id)
 
+# --- ЗАПУСК ---
 
 async def main():
-    print("Митя запущен. Праздники и цитаты на связи!")
+    logging.info("Митя запущен и готов к общению!")
+    # Обновили меню команд: убрали /help, поставили /menu
+    await bot.set_my_commands([
+        types.BotCommand(command="start", description="Запустить бота"),
+        types.BotCommand(command="menu", description="Что умеет Митя?")
+    ])
     await dp.start_polling(bot)
 
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        logging.info("Бот остановлен")
