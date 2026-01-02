@@ -3,6 +3,7 @@ import json
 import random
 import os
 import logging
+import requests
 from datetime import datetime
 from typing import Callable, Dict, Any, Awaitable
 
@@ -41,6 +42,31 @@ class UserTrackingMiddleware(BaseMiddleware):
 dp.message.middleware(UserTrackingMiddleware())
 
 # --- ФУНКЦИИ РАБОТЫ С ДАННЫМИ ---
+
+def get_joke():
+    url = "https://randstuff.ru/joke/generate/"
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "X-Requested-With": "XMLHttpRequest",
+        "Origin": "https://randstuff.ru",
+        "Referer": "https://randstuff.ru/joke/",
+    }
+
+    session = requests.Session()
+    response = session.post(url, headers=headers, timeout=10)
+    response.raise_for_status()
+
+    data = response.json()
+
+    joke_text = data["joke"]["text"]
+
+    return joke_text
 
 def get_random_quote():
     try:
@@ -94,7 +120,8 @@ async def cmd_menu(message: types.Message):
         "🎲 **Выбор:** Напиши 'Митя, выбери пиво или квас'.\n"
         "🔮 **Шанс:** Напиши 'Митя, какой шанс на успех?'.\n"
         "🏆 **Игры:** Напиши 'Митя, кто сегодня красавчик?'.\n"
-        "🎉 **Праздники:** Ищи в инлайн-режиме (@ ник бота).\n\n"
+        "🎉 **Праздники:** Ищи в инлайн-режиме (@ ник бота).\n"
+        "🤡 **Шутки:** Ищи в инлайн-режиме (@ ник бота).\n\n"
         "Просто напиши мне, и я отвечу!"
     )
     await message.answer(menu_text, parse_mode="Markdown")
@@ -111,27 +138,29 @@ async def mitya_info_text(message: types.Message):
         "🎲 **Выбор:** Напиши 'Митя, выбери [чай] или [кофе]'.\n"
         "🔮 **Шанс:** Напиши 'Митя, какой шанс, что [событие]?'.\n"
         "🏆 **Игры:** Напиши 'Митя, кто сегодня [лох/красавчик/гений]?'.\n"
-        "✨ **Инлайн:** В любом чате введи `@bot_mitya_b` (через пробел), чтобы отправить цитату или праздник.\n\n"
+        "✨ **Инлайн:** В любом чате введи `@bot_mitya_b` (через пробел), чтобы отправить цитату или праздник или шутку.\n\n"
         "Полный список команд — /menu"
     )
     await message.answer(info_text)
 # 2. Инлайн-режим
+# --- ИСПРАВЛЕННЫЙ ИНЛАЙН-ХЕНДЛЕР ---
 @dp.inline_query()
 async def inline_handler(query: types.InlineQuery):
     user_name = query.from_user.first_name or "Друг"
     quote_text = get_random_quote()
     holiday_text = get_today_holiday()
+    results = []
 
-    results = [
-        # 1. Цитата
+    # 1. Цитата
+    results.append(
         InlineQueryResultArticle(
             id="quote_random",
             title="📜 Выдать случайную цитату",
             input_message_content=InputTextMessageContent(message_text=f"📜 {quote_text}")
         )
-    ]
+    )
 
-    # 2. Праздник (добавляем в список, только если он сегодня есть)
+    # 2. Праздник
     if holiday_text:
         results.append(
             InlineQueryResultArticle(
@@ -152,7 +181,36 @@ async def inline_handler(query: types.InlineQuery):
             )
         )
 
-    # 3. Приветствие
+    # 3. Шутка
+    try:
+        joke_text = get_joke()
+        results.append(
+            InlineQueryResultArticle(
+                id=f"joke",
+                title="🤡 Случайная шутка",
+                input_message_content=InputTextMessageContent(
+                    message_text=f"🤡 {joke_text}"
+                )
+            )
+        )
+    except Exception as e:
+        logging.error(f"Ошибка при получении шутки: {e}")
+
+    # 4. Предсказание
+    try:
+        results.append(
+            InlineQueryResultArticle(
+                id=f"cookies",
+                title="🥠 Печенье с предсказанием",
+                input_message_content=InputTextMessageContent(
+                    message_text=f"🥠 {joke_text}"
+                )
+            )
+        )
+    except Exception as e:
+        logging.error(f"Ошибка при получении {e}")
+
+    # 5. Приветствие
     results.append(
         InlineQueryResultArticle(
             id="greeting",
