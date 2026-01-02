@@ -212,12 +212,13 @@ async def inline_handler(query: types.InlineQuery):
 
     # 4. Предсказание
     try:
+        prediction = get_cookies()
         results.append(
             InlineQueryResultArticle(
                 id=f"cookies",
                 title="🥠 Печенье с предсказанием",
                 input_message_content=InputTextMessageContent(
-                    message_text=f"🥠 {cookies_text}"
+                    message_text=f"🥠 {prediction}"
                 )
             )
         )
