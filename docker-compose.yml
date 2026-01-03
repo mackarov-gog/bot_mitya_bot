@@ -1,0 +1,23 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: mitya-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    # Ollama будет работать внутри сети Docker на порту 11434
+
+  bot:
+    build: .
+    container_name: mitya-bot-container
+    restart: unless-stopped
+    depends_on:
+      - ollama
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - OLLAMA_HOST=http://ollama:11434
+    volumes:
+      - .:/app
+
+volumes:
+  ollama_data:

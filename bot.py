@@ -1,10 +1,11 @@
 import asyncio
+import httpx 
 import json
 import random
 import os
 import logging
 import requests
-import whisper  # <--- ДОБАВИЛИ БИБЛИОТЕКУ WHISPER
+import whisper  
 from datetime import datetime
 from typing import Callable, Dict, Any, Awaitable
 
@@ -99,6 +100,23 @@ def get_today_holiday():
         print(f"Ошибка парсинга праздников: {e}")
         return None
 
+
+# --- Могзи  ---
+async def ask_mitya_ai(prompt: str):
+    url = "http://ollama:11434/api/generate"
+    payload = {
+        "model": "qwen2.5:0.5b", # Мы скачаем её чуть позже
+        "prompt": f"Ты — Митя, свой пацан из чата. Отвечай коротко и по делу. Вопрос: {prompt}",
+        "stream": False
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, json=payload)
+            return response.json().get("response", "Че-то я подвис...")
+    except Exception as e:
+        logging.error(f"Ошибка ИИ: {e}")
+        return "Мозги чет заклинило, давай попозже."
+
 # --- ОБРАБОТЧИКИ (HANDLERS) ---
 
 @dp.message(F.text == "/start")
@@ -152,9 +170,12 @@ async def handle_voice(message: types.Message):
         text = result.get("text", "")
         
         if text:
-            await message.reply(f"🎤 **Распознано:**\n{text}", parse_mode="Markdown")
+            ai_reply = await ask_mitya_ai(text)
+            await message.reply(f"🎤 *Ты сказал:* {text}\n\n😎 *Митя:* {ai_reply}", parse_mode="Markdown")
         else:
             await message.answer("Что-то неразборчиво... Попробуй еще раз.")
+        
+        
             
     except Exception as e:
         logging.error(f"Ошибка при обработке голосового: {e}")
