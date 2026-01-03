@@ -20,8 +20,8 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           script: |
             # Создаем папку проекта, если её нет
-            mkdir -p ~/mitya_bot
-            cd ~/mitya_bot
+            mkdir -p ~/my_bot
+            cd ~/my_bot
             
             # В реальном CI/CD здесь должен быть git pull, 
             # но для начала мы просто скопируем файлы через SCP или обновим их
