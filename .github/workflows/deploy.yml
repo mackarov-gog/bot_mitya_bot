@@ -1,0 +1,43 @@
+name: Deploy Mitya Bot
+
+on:
+  push:
+    branches:
+      - main  # Сработает, когда сделаешь git push
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            # Создаем папку проекта, если её нет
+            mkdir -p ~/mitya_bot
+            cd ~/mitya_bot
+            
+            # В реальном CI/CD здесь должен быть git pull, 
+            # но для начала мы просто скопируем файлы через SCP или обновим их
+            # Для простоты сейчас просто пересоберем образ:
+            
+            # 1. Останавливаем старый контейнер (если он был)
+            docker stop mitya-bot-container || true
+            docker rm mitya-bot-container || true
+            
+            # 2. Собираем новый образ из Dockerfile
+            # (Файлы должны быть на сервере, либо используй экшен appleboy/scp-action перед этим)
+            docker build -t mitya-bot-image .
+            
+            # 3. Запускаем контейнер
+            docker run -d \
+              --name mitya-bot-container \
+              --restart unless-stopped \
+              -e BOT_TOKEN=${{ secrets.BOT_TOKEN }} \
+              mitya-bot-image
