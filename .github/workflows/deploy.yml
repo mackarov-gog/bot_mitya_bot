@@ -3,7 +3,7 @@ name: Deploy Mitya Bot
 on:
   push:
     branches:
-      - main  # Сработает, когда сделаешь git push
+      - main
 
 jobs:
   deploy:
@@ -12,30 +12,44 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Deploy to Server via SSH
+      # ШАГ 1: Копируем файлы на сервер. 
+      # Очищаем папку перед копированием, чтобы не было конфликтов версий.
+      - name: Copy files to server
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "."
+          target: "~/mitya_bot"
+          rm: true 
+
+      # ШАГ 2: Сборка и запуск через SSH
+      - name: Build and Run Docker
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            # Создаем папку проекта, если её нет
-            mkdir -p ~/my_bot
-            cd ~/my_bot
+            cd ~/mitya_bot
+            echo "--- СПИСОК ФАЙЛОВ НА СЕРВЕРЕ ---"
+            ls -la
             
-            # В реальном CI/CD здесь должен быть git pull, 
-            # но для начала мы просто скопируем файлы через SCP или обновим их
-            # Для простоты сейчас просто пересоберем образ:
-            
-            # 1. Останавливаем старый контейнер (если он был)
+            # Проверяем наличие Dockerfile (защита от ошибок)
+            if [ ! -f Dockerfile ]; then
+              echo "ОШИБКА: Dockerfile не найден в папке mitya_bot!"
+              exit 1
+            fi
+
+            # Останавливаем и удаляем старый контейнер
             docker stop mitya-bot-container || true
             docker rm mitya-bot-container || true
             
-            # 2. Собираем новый образ из Dockerfile
-            # (Файлы должны быть на сервере, либо используй экшен appleboy/scp-action перед этим)
+            # Сборка образа (займет время из-за Whisper)
             docker build -t mitya-bot-image .
             
-            # 3. Запускаем контейнер
+            # Запуск
             docker run -d \
               --name mitya-bot-container \
               --restart unless-stopped \
