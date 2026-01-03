@@ -4,3 +4,4 @@ requests
 openai-whisper
 setuptools-rust
 ffmpeg
+httpx
