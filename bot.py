@@ -28,7 +28,7 @@ dp = Dispatcher()
 # --- ИНИЦИАЛИЗАЦИЯ WHISPER ---
 logging.info("Загрузка модели Whisper...")
 # Используем модель 'tiny' для экономии памяти. Можно поменять на 'base' или 'small', если нужно точнее.
-whisper_model = whisper.load_model("tiny")
+whisper_model = whisper.load_model("small")
 logging.info("Whisper готов к работе!")
 
 # --- ХРАНИЛИЩЕ ПОЛЬЗОВАТЕЛЕЙ ---
