@@ -186,6 +186,28 @@ async def handle_voice(message: types.Message):
         if os.path.exists(local_filename):
             os.remove(local_filename)
 
+# --- УМНЫЙ ТЕКСТОВЫЙ ОБРАБОТЧИК (Qwen для текста) ---
+@dp.message(F.text.lower().startswith("митя"))
+async def smart_text_handler(message: types.Message):
+    text = message.text.lower()
+    
+    # Список слов-исключений, чтобы не перебивать старые команды (выбор, кто, цитата)
+    exceptions = ["выбери", "кто", "выдай цитату", "шанс", "вероятность"]
+    
+    # Если это НЕ старая команда, то отправляем в мозги (Qwen)
+    if not any(word in text for word in exceptions):
+        await bot.send_chat_action(chat_id=message.chat.id, action="typing")
+        
+        # Отрезаем само слово "Митя" и знаки препинания в начале
+        prompt = message.text[4:].strip().lstrip(",. ")
+        
+        if not prompt:
+            await message.answer("Чего звал? Я тут. Задай вопрос или запиши голосовое.")
+            return
+
+        ai_reply = await ask_mitya_ai(prompt)
+        await message.answer(ai_reply)
+
 
 # --- ИНЛАЙН И ТЕКСТОВЫЕ ИГРЫ (ОСТАЛИСЬ БЕЗ ИЗМЕНЕНИЙ) ---
 
