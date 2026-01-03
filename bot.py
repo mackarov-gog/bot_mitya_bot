@@ -4,6 +4,7 @@ import random
 import os
 import logging
 import requests
+import whisper  # <--- ДОБАВИЛИ БИБЛИОТЕКУ WHISPER
 from datetime import datetime
 from typing import Callable, Dict, Any, Awaitable
 
@@ -23,6 +24,12 @@ if not TOKEN:
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
+
+# --- ИНИЦИАЛИЗАЦИЯ WHISPER ---
+logging.info("Загрузка модели Whisper...")
+# Используем модель 'tiny' для экономии памяти. Можно поменять на 'base' или 'small', если нужно точнее.
+whisper_model = whisper.load_model("tiny")
+logging.info("Whisper готов к работе!")
 
 # --- ХРАНИЛИЩЕ ПОЛЬЗОВАТЕЛЕЙ ---
 seen_users = {}
@@ -45,40 +52,24 @@ dp.message.middleware(UserTrackingMiddleware())
 
 def get_joke():
     url = "https://randstuff.ru/joke/generate/"
-
     headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        ),
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "application/json, text/javascript, */*; q=0.01",
         "X-Requested-With": "XMLHttpRequest",
         "Origin": "https://randstuff.ru",
         "Referer": "https://randstuff.ru/joke/",
     }
-
     session = requests.Session()
     response = session.post(url, headers=headers, timeout=10)
     response.raise_for_status()
-
     data = response.json()
-
-    joke_text = data["joke"]["text"]
-
-    return joke_text
-
+    return data["joke"]["text"]
 
 def get_cookies():
     url = "https://api.forismatic.com/api/1.0/?method=getQuote&format=json&lang=ru"
-
     response = requests.get(url)
-
     data = response.json()
-
-    cookies_text = data["quoteText"]
-
-    return cookies_text
+    return data["quoteText"]
 
 def get_random_quote():
     try:
@@ -96,14 +87,10 @@ def get_today_holiday():
     try:
         base_path = os.path.dirname(__file__)
         file_path = os.path.join(base_path, 'holidays.json')
-
-        # Получаем текущую дату в формате ММ-ДД (как в вашем JSON)
         today_date = datetime.now(ZoneInfo("Europe/Moscow")).strftime("%m-%d")
-
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
             holidays = data.get('holidays', [])
-
             for holiday in holidays:
                 if holiday.get('date') == today_date:
                     return f"🎉 {holiday.get('name')}!\n{holiday.get('greeting')}"
@@ -114,50 +101,73 @@ def get_today_holiday():
 
 # --- ОБРАБОТЧИКИ (HANDLERS) ---
 
-# !!! ВАЖНО: Команды /start и /menu должны быть ПЕРВЫМИ !!!
-
 @dp.message(F.text == "/start")
 async def cmd_start(message: types.Message):
     await message.answer(
         f"Привет, {message.from_user.first_name}! 👋\n"
         "Я Митя — твой универсальный компаньон.\n"
-        "Напиши /menu, чтобы узнать, что я умею."
+        "Можешь записать мне голосовое — я пойму, что ты сказал!"
     )
 
 @dp.message(F.text == "/menu")
 async def cmd_menu(message: types.Message):
     menu_text = (
         "🤖 **Что я умею:**\n\n"
+        "🎤 **Слух:** Отправь голосовое сообщение.\n"
         "📜 **Цитаты:** Напиши 'Митя, выдай цитату'.\n"
         "🎲 **Выбор:** Напиши 'Митя, выбери пиво или квас'.\n"
         "🔮 **Шанс:** Напиши 'Митя, какой шанс на успех?'.\n"
         "🏆 **Игры:** Напиши 'Митя, кто сегодня красавчик?'.\n"
         "🎉 **Праздники:** Ищи в инлайн-режиме (@ ник бота).\n"
-        "🤡 **Шутки:** Ищи в инлайн-режиме (@ ник бота).\n"
-        "🥠 **Печенье с предсказанием:** Ищи в инлайн-режиме (@ ник бота).\n\n"
-        
-        "Просто напиши мне, и я отвечу!"
     )
     await message.answer(menu_text, parse_mode="Markdown")
-# Реакция на вопросы о способностях в обычном чате
+
 @dp.message(F.text.lower().contains("митя") & 
            (F.text.lower().contains("умеешь") | 
             F.text.lower().contains("можешь") | 
-            F.text.lower().contains("помощь") | 
-            F.text.lower().contains("че делаешь")))
+            F.text.lower().contains("помощь")))
 async def mitya_info_text(message: types.Message):
-    info_text = (
-        "Меня звали? 😎 Вот краткий список того, чем я полезен:\n\n"
-        "📜 **Цитаты:** Напиши 'Митя, выдай цитату'.\n"
-        "🎲 **Выбор:** Напиши 'Митя, выбери [чай] или [кофе]'.\n"
-        "🔮 **Шанс:** Напиши 'Митя, какой шанс, что [событие]?'.\n"
-        "🏆 **Игры:** Напиши 'Митя, кто сегодня [лох/красавчик/гений]?'.\n"
-        "✨ **Инлайн:** В любом чате введи `@bot_mitya_b` (через пробел), чтобы отправить цитату или праздник или шутку или печенье с предсказанием.\n\n"
-        "Полный список команд — /menu"
-    )
-    await message.answer(info_text)
-# 2. Инлайн-режим
-# --- ИСПРАВЛЕННЫЙ ИНЛАЙН-ХЕНДЛЕР ---
+    await message.answer("Я умею слушать голосовые сообщения! Просто запиши что-нибудь.")
+
+# --- ОБРАБОТЧИК ГОЛОСОВЫХ (НОВЫЙ БЛОК) ---
+@dp.message(F.voice)
+async def handle_voice(message: types.Message):
+    # Показываем статус "печатает", пока обрабатываем звук
+    await bot.send_chat_action(chat_id=message.chat.id, action="typing")
+    
+    file_id = message.voice.file_id
+    file = await bot.get_file(file_id)
+    file_path = file.file_path
+    
+    # Создаем уникальное имя для временного файла
+    local_filename = f"voice_{file_id}.ogg"
+    
+    try:
+        # 1. Скачиваем файл на диск
+        await bot.download_file(file_path, local_filename)
+        
+        # 2. Транскрибируем через Whisper
+        # fp16=False важно, если запускаем на CPU (чтобы не было warning-ов)
+        result = whisper_model.transcribe(local_filename, fp16=False, language='ru')
+        text = result.get("text", "")
+        
+        if text:
+            await message.reply(f"🎤 **Распознано:**\n{text}", parse_mode="Markdown")
+        else:
+            await message.answer("Что-то неразборчиво... Попробуй еще раз.")
+            
+    except Exception as e:
+        logging.error(f"Ошибка при обработке голосового: {e}")
+        await message.answer("Не удалось расшифровать голосовое 😔")
+        
+    finally:
+        # 3. Удаляем временный файл, чтобы не засорять сервер
+        if os.path.exists(local_filename):
+            os.remove(local_filename)
+
+
+# --- ИНЛАЙН И ТЕКСТОВЫЕ ИГРЫ (ОСТАЛИСЬ БЕЗ ИЗМЕНЕНИЙ) ---
+
 @dp.inline_query()
 async def inline_handler(query: types.InlineQuery):
     user_name = query.from_user.first_name or "Друг"
@@ -225,7 +235,6 @@ async def inline_handler(query: types.InlineQuery):
     except Exception as e:
         logging.error(f"Ошибка при получении {e}")
 
-    # 5. Приветствие
     results.append(
         InlineQueryResultArticle(
             id="greeting",
@@ -233,10 +242,8 @@ async def inline_handler(query: types.InlineQuery):
             input_message_content=InputTextMessageContent(message_text=f"Привет, {user_name}!")
         )
     )
-
     await query.answer(results, cache_time=1)
 
-# 3. Текстовые игры
 @dp.message(F.text.lower().contains("митя, выдай цитату"))
 async def quote_handler(message: types.Message):
     await message.answer(f"📜 {get_random_quote()}")
@@ -275,7 +282,6 @@ async def insult_handler(message: types.Message):
 
 async def main():
     logging.info("Митя запущен и готов к общению!")
-    # Обновили меню команд: убрали /help, поставили /menu
     await bot.set_my_commands([
         types.BotCommand(command="start", description="Запустить бота"),
         types.BotCommand(command="menu", description="Что умеет Митя?")
