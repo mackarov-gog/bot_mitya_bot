@@ -104,10 +104,25 @@ def get_today_holiday():
 # --- Могзи  ---
 async def ask_mitya_ai(prompt: str):
     url = "http://ollama:11434/api/generate"
+
+    # Жесткая установка роли: кто он и как должен себя вести
+    system_instruction = (
+        "Ты — Митя, четкий и краткий пацан из чата. "
+        "Говоришь на простом русском языке. Не используй заумных слов. "
+        "Твои ответы должны быть не длиннее 2-3 предложений. "
+        "Если не знаешь ответа, просто шути или отвечай 'Без понятия, бро'. "
+        f"Вопрос: {prompt}"
+    )
+
     payload = {
-        "model": "qwen2.5:0.5b", # Мы скачаем её чуть позже
-        "prompt": f"Ты — Митя, свой пацан из чата. Отвечай коротко и по делу. Вопрос: {prompt}",
-        "stream": False
+        "model": "qwen2.5:0.5b",
+        "prompt": system_instruction,
+        "stream": False,
+        "options": {
+            "temperature": 0.7,  # Уменьшаем "фантазию" (0.1 - робот, 1.0 - сказочник)
+            "num_predict": 100,  # Ограничиваем длину ответа (в токенах)
+            "top_p": 0.9  # Отсекаем совсем маловероятный бред
+        }
     }
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -147,6 +162,43 @@ async def cmd_menu(message: types.Message):
 async def mitya_info_text(message: types.Message):
     await message.answer("Я умею слушать голосовые сообщения! Просто запиши что-нибудь.")
 
+
+
+
+
+@dp.message(F.text.lower().contains("митя, выдай цитату"))
+async def quote_handler(message: types.Message):
+    await message.answer(f"📜 {get_random_quote()}")
+
+@dp.message(F.text.lower().startswith("митя, кто"))
+async def who_is_handler(message: types.Message):
+    if not seen_users:
+        await message.answer("Я пока никого не знаю. Напишите что-нибудь в чат!")
+        return
+    winner = random.choice(list(seen_users.values()))
+    question = message.text.lower().replace("митя, кто", "").strip().rstrip("?")
+    if not question: question = "сегодня везунчик"
+    await message.answer(f"🤔 Анализирую чат...\n✨ {question.capitalize()} — это **{winner}**! 🏆")
+
+@dp.message(F.text.lower().startswith("митя, выбери"))
+async def choose_handler(message: types.Message):
+    content = message.text[12:].lower()
+    if " или " in content:
+        options = [opt.strip() for opt in content.split(" или ") if opt.strip()]
+        await message.answer(f"🎲 Мой выбор: **{random.choice(options)}**")
+    else:
+        await message.answer("Используй 'или'. Пример: Митя, выбери А или Б")
+
+@dp.message(F.text.lower().contains("шанс") | F.text.lower().contains("вероятность"))
+async def chance_handler(message: types.Message):
+    if "митя" in message.text.lower():
+        percent = random.randint(0, 100)
+        await message.answer(f"🔮 Вероятность: **{percent}%**")
+
+@dp.message(F.text.lower().contains("пидор"))
+async def insult_handler(message: types.Message):
+    user_name = message.from_user.first_name or "Друг"
+    await message.answer(f"Пидор - {user_name}!", reply_to_message_id=message.message_id)
 
 # --- ОБРАБОТЧИК ГОЛОСОВЫХ С ЛОГИКОЙ ОБРАЩЕНИЯ ---
 @dp.message(F.voice)
@@ -288,39 +340,7 @@ async def inline_handler(query: types.InlineQuery):
     )
     await query.answer(results, cache_time=1)
 
-@dp.message(F.text.lower().contains("митя, выдай цитату"))
-async def quote_handler(message: types.Message):
-    await message.answer(f"📜 {get_random_quote()}")
 
-@dp.message(F.text.lower().startswith("митя, кто"))
-async def who_is_handler(message: types.Message):
-    if not seen_users:
-        await message.answer("Я пока никого не знаю. Напишите что-нибудь в чат!")
-        return
-    winner = random.choice(list(seen_users.values()))
-    question = message.text.lower().replace("митя, кто", "").strip().rstrip("?")
-    if not question: question = "сегодня везунчик"
-    await message.answer(f"🤔 Анализирую чат...\n✨ {question.capitalize()} — это **{winner}**! 🏆")
-
-@dp.message(F.text.lower().startswith("митя, выбери"))
-async def choose_handler(message: types.Message):
-    content = message.text[12:].lower()
-    if " или " in content:
-        options = [opt.strip() for opt in content.split(" или ") if opt.strip()]
-        await message.answer(f"🎲 Мой выбор: **{random.choice(options)}**")
-    else:
-        await message.answer("Используй 'или'. Пример: Митя, выбери А или Б")
-
-@dp.message(F.text.lower().contains("шанс") | F.text.lower().contains("вероятность"))
-async def chance_handler(message: types.Message):
-    if "митя" in message.text.lower():
-        percent = random.randint(0, 100)
-        await message.answer(f"🔮 Вероятность: **{percent}%**")
-
-@dp.message(F.text.lower().contains("пидор"))
-async def insult_handler(message: types.Message):
-    user_name = message.from_user.first_name or "Друг"
-    await message.answer(f"Пидор - {user_name}!", reply_to_message_id=message.message_id)
 
 # --- ЗАПУСК ---
 
