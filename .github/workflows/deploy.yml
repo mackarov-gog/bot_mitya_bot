@@ -12,7 +12,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # ШАГ 1: Копируем все файлы проекта на сервер (включая docker-compose.yml)
+      # ШАГ 1: Копируем файлы (rm: true очистит папку, это нормально, если мы создадим .env позже)
       - name: Copy files to server
         uses: appleboy/scp-action@master
         with:
@@ -23,7 +23,7 @@ jobs:
           target: "~/mitya_bot"
           rm: true 
 
-      # ШАГ 2: Запуск инфраструктуры через Docker Compose
+      # ШАГ 2: Запуск с созданием .env
       - name: Build and Run with Docker Compose
         uses: appleboy/ssh-action@master
         with:
@@ -33,24 +33,25 @@ jobs:
           script: |
             cd ~/mitya_bot
             
-            # Проверяем наличие необходимых файлов
+            # СОЗДАЕМ .env из секретов GitHub
+            # Убедись, что в GitHub Secrets добавлен BOT_TOKEN
+            echo "BOT_TOKEN=${{ secrets.BOT_TOKEN }}" > .env
+            echo "OLLAMA_HOST=http://ollama:11434" >> .env
+
             if [ ! -f docker-compose.yml ]; then
               echo "ОШИБКА: docker-compose.yml не найден!"
               exit 1
             fi
 
-            # Останавливаем старые сервисы, если они были запущены
             docker compose down || true
             
-            # Собираем и запускаем контейнеры в фоновом режиме
-            # --build гарантирует, что образ бота обновится с новым кодом
+            # Запускаем сборку. Docker Compose сам подтянет BOT_TOKEN из только что созданного .env
             docker compose up -d --build
             
             echo "Ожидаем запуск Ollama..."
             sleep 10
             
-            # Скачиваем модель Qwen2.5-0.5B-Instruct (используем тег 0.5b)
-            # Команда 'run' скачает модель, если её нет, и отправит тестовое сообщение
-            docker exec mitya-ollama ollama run qwen2.5:0.5b "Привет, ты работаешь?"
+            # Скачиваем модель
+            docker exec mitya-ollama ollama pull qwen2.5:0.5b
             
             echo "Деплой успешно завершен!"
