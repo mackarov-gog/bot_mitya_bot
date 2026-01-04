@@ -147,42 +147,43 @@ async def cmd_menu(message: types.Message):
 async def mitya_info_text(message: types.Message):
     await message.answer("Я умею слушать голосовые сообщения! Просто запиши что-нибудь.")
 
-# --- ОБРАБОТЧИК ГОЛОСОВЫХ (НОВЫЙ БЛОК) ---
+
+# --- ОБРАБОТЧИК ГОЛОСОВЫХ С ЛОГИКОЙ ОБРАЩЕНИЯ ---
 @dp.message(F.voice)
 async def handle_voice(message: types.Message):
-    # Показываем статус "печатает", пока обрабатываем звук
     await bot.send_chat_action(chat_id=message.chat.id, action="typing")
-    
+
     file_id = message.voice.file_id
     file = await bot.get_file(file_id)
-    file_path = file.file_path
-    
-    # Создаем уникальное имя для временного файла
     local_filename = f"voice_{file_id}.ogg"
-    
+
     try:
-        # 1. Скачиваем файл на диск
-        await bot.download_file(file_path, local_filename)
-        
-        # 2. Транскрибируем через Whisper
-        # fp16=False важно, если запускаем на CPU (чтобы не было warning-ов)
+        # 1. Скачиваем и расшифровываем
+        await bot.download_file(file.file_path, local_filename)
         result = whisper_model.transcribe(local_filename, fp16=False, language='ru')
-        text = result.get("text", "")
-        
-        if text:
-            ai_reply = await ask_mitya_ai(text)
-            await message.reply(f"🎤 *Ты сказал:* {text}\n\n😎 *Митя:* {ai_reply}", parse_mode="Markdown")
+        raw_text = result.get("text", "").strip()
+
+        if not raw_text:
+            await message.answer("Ничего не услышал. Попробуй еще раз.")
+            return
+
+        # 2. Проверяем, позвали ли Митю (регистронезависимо)
+        if "митя" in raw_text.lower():
+            # Отрезаем имя "Митя" для более чистого запроса к ИИ
+            # (необязательно, но так нейросеть лучше понимает суть)
+            clean_prompt = raw_text.lower().replace("митя", "").strip(",. ")
+
+            ai_reply = await ask_mitya_ai(clean_prompt)
+            await message.reply(f"🎤 *Ты сказал:* {raw_text}\n\n😎 *Митя:* {ai_reply}", parse_mode="Markdown")
         else:
-            await message.answer("Что-то неразборчиво... Попробуй еще раз.")
-        
-        
-            
+            # Если Митю не звали — просто выдаем текст
+            await message.reply(f"📝 *Расшифровка:* {raw_text}", parse_mode="Markdown")
+
     except Exception as e:
         logging.error(f"Ошибка при обработке голосового: {e}")
-        await message.answer("Не удалось расшифровать голосовое 😔")
-        
+        await message.answer("Не удалось обработать голос 😔")
+
     finally:
-        # 3. Удаляем временный файл, чтобы не засорять сервер
         if os.path.exists(local_filename):
             os.remove(local_filename)
 
