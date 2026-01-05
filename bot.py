@@ -102,28 +102,31 @@ def get_today_holiday():
 
 
 # --- Могзи  ---
-async def ask_mitya_ai(prompt: str):
-    url = "http://ollama:11434/api/generate"
+async def ask_mitya_ai(user_text: str):
+    url = "http://ollama:11434/api/chat"
+
     payload = {
-        "model": "mitya-gemma",  
-        "prompt": prompt,
+        "model": "mitya-gemma",
+        "messages": [
+            {
+                "role": "user",
+                "content": user_text
+            }
+        ],
         "stream": False,
         "options": {
-            "num_predict": 150  # Ограничиваем длину ответа
+            "num_predict": 120,
+            "temperature": 0.7  
         }
     }
 
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(url, json=payload)
-            if response.status_code == 200:
-                # Очищаем ответ от возможных лишних пробелов
-                return response.json().get("response", "").strip()
-            else:
-                return "Мозги чет подкипели, попробуй позже."
-    except Exception as e:
-        print(f"Ошибка Ollama: {e}")
-        return "Митя временно не в духе."
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(url, json=payload)
+        if response.status_code == 200:
+            # В режиме /api/chat ответ лежит по другому пути в JSON
+            return response.json().get("message", {}).get("content", "").strip()
+        else:
+            return "Чет связь оборвалась, перезвони позже."
 
 # --- ОБРАБОТЧИКИ (HANDLERS) ---
 
