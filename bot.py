@@ -104,33 +104,26 @@ def get_today_holiday():
 # --- Могзи  ---
 async def ask_mitya_ai(prompt: str):
     url = "http://ollama:11434/api/generate"
-
-    # Жесткая установка роли: кто он и как должен себя вести
-    system_instruction = (
-        "Ты — Митя, четкий и краткий пацан из чата. "
-        "Говоришь на простом русском языке. Не используй заумных слов. "
-        "Твои ответы должны быть не длиннее 2-3 предложений. "
-        "Если не знаешь ответа, просто шути или отвечай 'Без понятия, бро'. "
-        f"Вопрос: {prompt}"
-    )
-
     payload = {
-        "model": "qwen2.5:0.5b",
-        "prompt": system_instruction,
+        "model": "mitya-gemma",  
+        "prompt": prompt,
         "stream": False,
         "options": {
-            "temperature": 0.7,  # Уменьшаем "фантазию" (0.1 - робот, 1.0 - сказочник)
-            "num_predict": 100,  # Ограничиваем длину ответа (в токенах)
-            "top_p": 0.9  # Отсекаем совсем маловероятный бред
+            "num_predict": 150  # Ограничиваем длину ответа
         }
     }
+
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(url, json=payload)
-            return response.json().get("response", "Че-то я подвис...")
+            if response.status_code == 200:
+                # Очищаем ответ от возможных лишних пробелов
+                return response.json().get("response", "").strip()
+            else:
+                return "Мозги чет подкипели, попробуй позже."
     except Exception as e:
-        logging.error(f"Ошибка ИИ: {e}")
-        return "Мозги чет заклинило, давай попозже."
+        print(f"Ошибка Ollama: {e}")
+        return "Митя временно не в духе."
 
 # --- ОБРАБОТЧИКИ (HANDLERS) ---
 

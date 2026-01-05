@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     volumes:
       - ollama_data:/root/.ollama
-    # Ollama будет работать внутри сети Docker на порту 11434
+      - /root/models:/models  # Монтируем папку с дообученной Gemma
 
   bot:
     build: .
