@@ -12,6 +12,7 @@ from typing import Callable, Dict, Any, Awaitable
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types, F, BaseMiddleware
 from aiogram.types import InlineQueryResultArticle, InputTextMessageContent, TelegramObject
+from aiogram.filters import Command
 from zoneinfo import ZoneInfo
 
 # Настройка логирования
