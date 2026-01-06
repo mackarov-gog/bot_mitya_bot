@@ -144,7 +144,7 @@ async def cmd_start(message: types.Message):
     if message.chat.type == 'private':
         await message.answer("Привет! Мы в личном чате.")
     else:
-        await message.answer(f"Привет! Я работаю в группе: {message.chat.title}")
+        await message.answer(f"Привет! Я работаю в группе: {message.chat.title} {message.chat.id}")
 
 @dp.message(Command("/menu"))
 async def cmd_menu(message: types.Message):
