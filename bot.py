@@ -130,15 +130,15 @@ async def ask_mitya_ai(user_text: str):
 
 # --- ОБРАБОТЧИКИ (HANDLERS) ---
 
-@dp.message(F.text == "/start")
+@dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     await message.answer(
-        f"Привет, {message.from_user.first_name}! 👋\n"
-        "Я Митя — твой универсальный компаньон.\n"
-        "Можешь записать мне голосовое — я пойму, что ты сказал!"
+        f"Здарова, {message.from_user.first_name}! 👋\n"
+        "Я Митя. Теперь у меня есть память, характер и уши.\n"
+        "Пиши /menu чтобы узнать, че я могу."
     )
 
-@dp.message(F.text == "/menu")
+@dp.message(Command("/menu"))
 async def cmd_menu(message: types.Message):
     menu_text = (
         "🤖 **Что я умею:**\n\n"
@@ -241,7 +241,7 @@ async def smart_text_handler(message: types.Message):
     text = message.text.lower()
     
     # Список слов-исключений, чтобы не перебивать старые команды (выбор, кто, цитата)
-    exceptions = ["выбери", "кто", "выдай цитату", "шанс", "вероятность"]
+    exceptions = ["выбери", "кто", "выдай цитату", "шанс", "вероятность", "/settings", "/menu", "/start"]
     
     # Если это НЕ старая команда, то отправляем в мозги (Qwen)
     if not any(word in text for word in exceptions):
@@ -343,8 +343,9 @@ async def inline_handler(query: types.InlineQuery):
 async def main():
     logging.info("Митя запущен и готов к общению!")
     await bot.set_my_commands([
-        types.BotCommand(command="start", description="Запустить бота"),
-        types.BotCommand(command="menu", description="Что умеет Митя?")
+        types.BotCommand(command="start", description="Перезагрузить"),
+        types.BotCommand(command="menu", description="Возможности"),
+        types.BotCommand(command="settings", description="Настройки чата")
     ])
     await dp.start_polling(bot)
 

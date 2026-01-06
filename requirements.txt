@@ -3,5 +3,5 @@ python-dotenv
 requests
 openai-whisper
 setuptools-rust
-ffmpeg
+aiosqlite
 httpx
