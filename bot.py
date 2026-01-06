@@ -467,18 +467,11 @@ async def handle_voice(message: types.Message):
 
 @dp.message(F.text)
 async def smart_text_handler(message: types.Message):
-    chat_id = message.chat.id[cite: 5]
-    text = message.text.lower()[cite: 5]
-    user_id = message.from_user.id[cite: 5]
-    name = message.from_user.first_name[cite: 5]
-    is_private = message.chat.type == "private"
-
-    
-    if message.from_user.is_bot:
-        if "митя" not in text:
-            return  # Игнорируем других ботов, если они не зовут Митю лично
-
-    # 1. Проверка токсичности
+    chat_id = message.chat.id
+    text = message.text.lower()
+    user_id = message.from_user.id
+    name = message.from_user.first_name
+    # 1. Анализ кармы (если бот написал что-то токсичное про Митю)
     if "митя" in text:
         sentiment = await check_toxicity_llm(text)
         if sentiment == "toxic":
@@ -488,20 +481,21 @@ async def smart_text_handler(message: types.Message):
 
     s = await get_chat_settings(chat_id)
 
-    # 2. Если это ЛС - отвечаем всегда (если ИИ включен)
-    if is_private:
+    # 2. Ответ в ЛС (даже ботам)
+    if message.chat.type == "private":
         if s['ai_enabled']:
             reply = await ask_mitya_ai(chat_id, message.text, user_id)
             await message.answer(reply)
         return
 
-    # 3. ГРУППА: Явный вызов по имени
-    if text.startswith("митя"):
-        if not s['ai_enabled']: return
-        clean_prompt = message.text[4:].strip()
-        reply = await ask_mitya_ai(chat_id, clean_prompt, user_id)
-        await message.answer(reply)
-        return
+    # 3. Реакция на обращение или случайное вклинивание
+    if text.startswith("митя") or (s['reply_chance'] > 0 and random.randint(1, 100) <= s['reply_chance']):
+        if s['ai_enabled']:
+            await bot.send_chat_action(chat_id=chat_id, action="typing")
+            # Если это вклинивание (без слова Митя), помечаем как is_auto
+            is_auto = not text.startswith("митя")
+            reply = await ask_mitya_ai(chat_id, message.text, user_id, is_auto=is_auto)
+            await message.answer(reply)
 
     # 4. ГРУППА: Случайное вклинивание (ВМЕСТО СЧЕТЧИКА)
     # Если шанс > 0, кидаем кубик от 1 до 100. Если выпало <= шансу, отвечаем.
@@ -515,8 +509,8 @@ async def smart_text_handler(message: types.Message):
 # --- ЗАПУСК ---
 
 async def main():
-    await init_db()[cite: 5]
-    logging.info("Митя запущен!")[cite: 5]
+    await init_db()
+    logging.info("Митя запущен!")
     await bot.set_my_commands([
         types.BotCommand(command="hi", description="Привет узнать id"),
         types.BotCommand(command="start", description="Перезапустить"),
@@ -527,5 +521,10 @@ async def main():
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        logging.info("Бот остановлен")
