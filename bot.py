@@ -362,11 +362,6 @@ async def cmd_karma(message: types.Message):
 
 @dp.message(Command("settings"))
 async def cmd_settings(message: types.Message):
-    # УДАЛИ ИЛИ ЗАКОММЕНТИРУЙ ЭТОТ БЛОК:
-    # if message.chat.type in ["group", "supergroup"]:
-    #     member = await message.chat.get_member(message.from_user.id)
-    #     if member.status not in ["creator", "administrator"]:
-    #         return await message.answer("Только админы могут менять настройки!")
 
     s = await get_chat_settings(message.chat.id)
     builder = InlineKeyboardBuilder()
@@ -402,6 +397,7 @@ async def settings_toggle(callback: CallbackQuery):
     # Обновляем текст сообщения
     await cmd_settings(callback.message)
     await callback.answer("Сохранено!")
+    await callback.message.delete()
 
 
 @dp.callback_query(F.data.startswith("chance_"))
@@ -410,6 +406,7 @@ async def settings_chance(callback: CallbackQuery):
     await update_setting(callback.message.chat.id, "reply_chance", value)
     await cmd_settings(callback.message)
     await callback.answer(f"Шанс установлен: {value}%")
+    await callback.message.delete()
 
 
 # --- ГОЛОСОВЫЕ ---
@@ -440,9 +437,9 @@ async def handle_voice(message: types.Message):
         if "митя" in raw_text.lower():
             clean_text = raw_text.lower().replace("митя", "").strip()
             reply = await ask_mitya_ai(message.chat.id, clean_text, message.from_user.id)
-            await message.reply(f"🎤 {raw_text}\n\n😎 {reply}")
+            await message.reply(f"🎤 Расшифровка: {raw_text}\n\n😎 Митя: {reply}")
         else:
-            await message.reply(f"🎤 {raw_text}")
+            await message.reply(f"🎤 Расшифровка: {raw_text}")
     except Exception as e:
         logging.error(f"Voice Error: {e}")
     finally:
