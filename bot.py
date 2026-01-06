@@ -467,11 +467,16 @@ async def handle_voice(message: types.Message):
 
 @dp.message(F.text)
 async def smart_text_handler(message: types.Message):
-    chat_id = message.chat.id
-    text = message.text.lower()
-    user_id = message.from_user.id
-    name = message.from_user.first_name
+    chat_id = message.chat.id[cite: 5]
+    text = message.text.lower()[cite: 5]
+    user_id = message.from_user.id[cite: 5]
+    name = message.from_user.first_name[cite: 5]
     is_private = message.chat.type == "private"
+
+    
+    if message.from_user.is_bot:
+        if "митя" not in text:
+            return  # Игнорируем других ботов, если они не зовут Митю лично
 
     # 1. Проверка токсичности
     if "митя" in text:
@@ -510,8 +515,8 @@ async def smart_text_handler(message: types.Message):
 # --- ЗАПУСК ---
 
 async def main():
-    await init_db()
-    logging.info("Митя запущен!")
+    await init_db()[cite: 5]
+    logging.info("Митя запущен!")[cite: 5]
     await bot.set_my_commands([
         types.BotCommand(command="hi", description="Привет узнать id"),
         types.BotCommand(command="start", description="Перезапустить"),
