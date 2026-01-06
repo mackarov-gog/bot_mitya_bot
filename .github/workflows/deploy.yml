@@ -21,7 +21,7 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           source: "."
           target: "~/mitya_bot"
-          rm: true 
+          rm: false  
 
       # ШАГ 2: Запуск с созданием .env
       - name: Build and Run with Docker Compose
