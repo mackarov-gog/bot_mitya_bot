@@ -362,10 +362,11 @@ async def cmd_karma(message: types.Message):
 
 @dp.message(Command("settings"))
 async def cmd_settings(message: types.Message):
-    if message.chat.type in ["group", "supergroup"]:
-        member = await message.chat.get_member(message.from_user.id)
-        if member.status not in ["creator", "administrator"]:
-            return await message.answer("Только админы могут менять настройки!")
+    # УДАЛИ ИЛИ ЗАКОММЕНТИРУЙ ЭТОТ БЛОК:
+    # if message.chat.type in ["group", "supergroup"]:
+    #     member = await message.chat.get_member(message.from_user.id)
+    #     if member.status not in ["creator", "administrator"]:
+    #         return await message.answer("Только админы могут менять настройки!")
 
     s = await get_chat_settings(message.chat.id)
     builder = InlineKeyboardBuilder()
