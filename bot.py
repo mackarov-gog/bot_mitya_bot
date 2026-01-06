@@ -393,20 +393,37 @@ async def cmd_settings(message: types.Message):
 async def settings_toggle(callback: CallbackQuery):
     _, param, value = callback.data.split("_")
     col = "ai_enabled" if param == "ai" else "voice_enabled"
-    await update_setting(callback.message.chat.id, col, int(value))
-    # Обновляем текст сообщения
-    await cmd_settings(callback.message)
-    await callback.answer("Сохранено!")
-    await callback.message.delete()
+    val_int = int(value)
+
+    await update_setting(callback.message.chat.id, col, val_int)
+
+
+    status = "✅ ВКЛ" if val_int == 1 else "❌ ВЫКЛ"
+    setting_name = "Мозг (ИИ)" if param == "ai" else "Слух (Войс)"
+
+    await callback.answer(f"{setting_name}: {status}")  # Всплывающее уведомление
+    await callback.message.delete()  # Удаляем старое меню настроек
+    await callback.message.answer(f"⚙️ Настройка изменена: **{setting_name}** теперь **{status}**",
+                                  parse_mode="Markdown")
 
 
 @dp.callback_query(F.data.startswith("chance_"))
 async def settings_chance(callback: CallbackQuery):
     value = int(callback.data.split("_")[1])
     await update_setting(callback.message.chat.id, "reply_chance", value)
-    await cmd_settings(callback.message)
-    await callback.answer(f"Шанс установлен: {value}%")
-    await callback.message.delete()
+
+    await callback.answer(f"Шанс: {value}%")  # Всплывающее уведомление
+    await callback.message.delete()  # Удаляем старое меню настроек
+
+    # Текст сообщения в зависимости от уровня
+    if value == 0:
+        msg = "🤐 Митя больше не будет вклиниваться в разговор сам (Шанс 0%)"
+    elif value == 100:
+        msg = "📢 Митя теперь будет комментировать каждое сообщение! (Шанс 100%)"
+    else:
+        msg = f"🎲 Теперь Митя будет встревать в диалог с вероятностью **{value}%**"
+
+    await callback.message.answer(msg, parse_mode="Markdown")
 
 
 # --- ГОЛОСОВЫЕ ---
@@ -502,7 +519,7 @@ async def main():
         types.BotCommand(command="settings", description="Настройки"),
         types.BotCommand(command="karma", description="Репутация")
     ])
-    await dp.start_polling(bot)
+    await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 
 if __name__ == "__main__":
