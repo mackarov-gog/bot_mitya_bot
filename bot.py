@@ -33,6 +33,13 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
 
+STICKERS_TOXIC = [
+    "CAACAgIAAxkBAAFAXAdpXr5wkEw5AAH0fqK1Loaiz1lDr6sAAsUqAALzN6hJao_y0kbm4mQ4BA"
+]
+
+STICKERS_POSITIVE = [
+    "CAACAgIAAxkBAAFAXAdpXr5wkEw5AAH0fqK1Loaiz1lDr6sAAsUqAALzN6hJao_y0kbm4mQ4BA"
+]
 
 # --- WHISPER  ---
 try:
@@ -592,31 +599,26 @@ async def cmd_menu(message: types.Message):
 
     await message.answer(menu_text, parse_mode="Markdown")
 
-def get_rank_name(rep: int) -> str:
-    if rep >= 120:
-        return "💎 Легенда двора"
-    if rep >= 100:
-        return "👑 Авторитет"
-    if rep >= 80:
-        return "🤝 Старший кореш"
-    if rep >= 60:
-        return "🤝 Ровный тип"
-    if rep >= 40:
-        return "🙂 Уважаемый"
-    if rep >= 10:
-        return "👤 Свой пацан"
-    if rep >= 0:
-        return "👤 Прохожий"
-    if rep >= -10:
-        return "⚠️ Мутный тип"
-    if rep >= -40:
-        return "⚠️ Неприятный"
-    if rep >= -60:
-        return "❌ Чушпан"
-    if rep >= -80:
-        return "🔥 Конфликтный"
-    if rep >= -100:
-        return "☠️ Проблемный"
+
+def get_reputation_title(rep):
+    levels = [
+        (120, "💎 Легенда двора"),
+        (100, "👑 Авторитет"),
+        (80, "🤝 Старший кореш"),
+        (60, "🤝 Ровный тип"),
+        (40, "🙂 Уважаемый"),
+        (10, "👤 Свой пацан"),
+        (0, "👤 Прохожий"),
+        (-10, "⚠️ Мутный тип"),
+        (-40, "⚠️ Неприятный"),
+        (-60, "❌ Чушпан"),
+        (-80, "🔥 Конфликтный"),
+        (-100, "☠️ Проблемный")
+    ]
+
+    for threshold, title in levels:
+        if rep >= threshold:
+            return title
     return "💀 Черт закатанный"
 
 
@@ -811,19 +813,27 @@ async def smart_text_handler(message: types.Message):
             await message.react([types.ReactionTypeEmoji(emoji=emo)])
         except Exception:
             pass
-
-    # 2. ОТПРАВЛЯЕМ СТИКЕР 
-    elif rand_val <= 55:  
+    elif rand_val <= 55:
         try:
-            await bot.send_chat_action(chat_id=chat_id, action="choose_sticker")
-            await asyncio.sleep(1.5)
+            # Показываем, что бот "печатает"
+            await bot.send_chat_action(chat_id=chat_id, action="typing")
+            await asyncio.sleep(1)  # небольшая пауза
 
+            # Выбираем стикер по настроению
             if sentiment == "positive" and STICKERS_POSITIVE:
-                await message.answer_sticker(random.choice(STICKERS_POSITIVE))
+                sticker_id = random.choice(STICKERS_POSITIVE)
+                await message.reply_sticker(sticker=sticker_id)
+
             elif sentiment == "toxic" and STICKERS_TOXIC:
-                await message.answer_sticker(random.choice(STICKERS_TOXIC))
+                sticker_id = random.choice(STICKERS_TOXIC)
+                await message.reply_sticker(sticker=sticker_id)
+
+            # Нейтральные — можно не показывать стикеры, или добавить свои
+            # elif sentiment == "neutral" and STICKERS_NEUTRAL:
+            #     await message.reply_sticker(random.choice(STICKERS_NEUTRAL))
+
         except Exception as e:
-            logging.error(f"Ошибка отправки стикера: {e}")
+            logging.exception(f"Ошибка отправки стикера: {e}")
 
 
 
