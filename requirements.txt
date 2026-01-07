@@ -1,7 +1,7 @@
 aiogram
 python-dotenv
 requests
-openai-whisper
+faster-whisper
 setuptools-rust
 aiosqlite
 httpx
