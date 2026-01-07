@@ -229,6 +229,7 @@ def get_cookies():
         resp = requests.get(url, timeout=5)
         resp.raise_for_status()
         data = resp.json()
+        return data.get("quoteText", "Цитата пустая") # Добавлен return
     except Exception:
         logging.exception("Ошибка get_cookies")
         return "Цитата недоступна"
@@ -600,7 +601,7 @@ async def cmd_menu(message: types.Message):
     await message.answer(menu_text, parse_mode="Markdown")
 
 
-def get_reputation_title(rep):
+def get_rank_name(rep):
     levels = [
         (120, "💎 Легенда двора"),
         (100, "👑 Авторитет"),
@@ -704,6 +705,11 @@ async def settings_chance(callback: CallbackQuery):
 # --- ГОЛОСОВЫЕ ---
 @dp.message(F.voice)
 async def handle_voice(message: types.Message):
+    if whisper_model is None:
+        logging.warning("Whisper model not loaded")
+        return await message.reply("Голосовой модуль недоступен.")  # Добавлен return
+
+    segments, info = await asyncio.to_thread(whisper_model.transcribe, path, beam_size=1, language="ru")
     # Ограничение длительности
     if message.voice.duration > 60:
         return await message.reply("Слышь, я такие длинные телеги не слушаю. Давай короче, до минуты!")
