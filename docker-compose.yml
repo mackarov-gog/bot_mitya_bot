@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   ollama:
     image: ollama/ollama:latest
@@ -5,19 +7,33 @@ services:
     restart: unless-stopped
     volumes:
       - ollama_data:/root/.ollama
-      - /root/models:/models  # Монтируем папку с дообученной Gemma
+      - /root/models:/models  # Папка с твоими моделями (Gemma)
+    # Проверка готовности нейросети перед запуском бота
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   bot:
     build: .
     container_name: mitya-bot-container
     restart: unless-stopped
+    # Бот запустится только когда Ollama подтвердит свою готовность через healthcheck
     depends_on:
-      - ollama
+      ollama:
+        condition: service_healthy
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
       - OLLAMA_HOST=http://ollama:11434
     volumes:
       - .:/app
+      - ./mitya_data.db:/app/mitya_data.db  # Проброс БД, чтобы данные не терялись
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   ollama_data:

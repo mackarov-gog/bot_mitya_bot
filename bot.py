@@ -772,24 +772,18 @@ async def smart_text_handler(message: types.Message):
     is_forward = bool(message.forward_from or message.forward_from_chat)
 
     raw_text = message.text or ""
-    text = raw_text.lower()
+    text_lower = raw_text.lower() # Исправлено имя переменной для консистентности
 
     user_id, name, is_bot, username = extract_sender_info(message)
     is_private = message.chat.type == "private"
 
-    # ПРОВЕРКА: Является ли это ответом на сообщение нашего бота?
     is_reply_to_me = (
             message.reply_to_message and
             message.reply_to_message.from_user and
             message.reply_to_message.from_user.id == bot.id
     )
 
-
-
-
-    # --- ЛОГИКА ЭМОЦИЙ МИТИ ---
-
-    # 1. Оценка токсичности (один раз на весь хендлер)
+    # 1. Оценка токсичности
     score = await check_toxicity_llm(raw_text)
     sentiment = "neutral"
     if score > 0:
@@ -799,14 +793,15 @@ async def smart_text_handler(message: types.Message):
 
     # 2. Обновление кармы
     if not is_bot and not is_forward:
-        should_check_karma = is_private or ("митя" in text) or is_reply_to_me
+        should_check_karma = is_private or ("митя" in text_lower) or is_reply_to_me
         if should_check_karma and score != 0:
             await update_reputation(chat_id, user_id, name, score)
 
     s = await get_chat_settings(chat_id)
-    rand_val = random.randint(1, 100)
 
-    # --- БЛОК 1: РЕАКЦИИ (не мешает остальному) ---
+
+    # --- БЛОК 1: РЕАКЦИИ (Независимо) ---
+    rand_val = random.randint(1, 100)
     if rand_val <= 40:
         EMOJI_MAP = {
             "positive": ["🔥", "👍", "😎"],
@@ -819,8 +814,8 @@ async def smart_text_handler(message: types.Message):
         except Exception:
             pass
 
-    # --- БЛОК 2: СТИКЕРЫ (не мешает остальному) ---
-    # Добавляем шанс 15% на стикер (независимо от реакции)
+    # --- БЛОК 2: СТИКЕРЫ (Независимо) ---
+    rand_val = random.randint(1, 100)
     if 41 <= rand_val <= 55:
         try:
             sticker_id = None
@@ -834,46 +829,47 @@ async def smart_text_handler(message: types.Message):
         except Exception:
             pass
 
-        # --- БЛОК 3: ТЕКСТОВЫЙ ОТВЕТ ИИ ---
-        if not s['ai_enabled']:
-            return
+    # --- БЛОК 3: ТЕКСТОВЫЙ ОТВЕТ ИИ (Теперь вне условий стикеров!) ---
+    if not s['ai_enabled']:
+        return
 
-        reply_text = None
-        is_auto = False
+    reply_text = None
+    is_auto = False
 
-        # А. Логика для лички
-        if is_private:
-            reply_text = await ask_mitya_ai(chat_id, raw_text, user_id=user_id)
+    # А. Логика для лички
+    if is_private:
+        reply_text = await ask_mitya_ai(chat_id, raw_text, user_id=user_id)
 
-        # Б. Логика для групп (обращение или реплай)
-        elif "митя" in text_lower or is_reply_to_me:
-            clean_prompt = raw_text
-            if "митя" in text_lower:
-                # Чистим имя из запроса
-                clean_prompt = re.sub(r'\bмитя\b', '', raw_text, flags=re.IGNORECASE).strip()
+    # Б. Логика для групп (обращение или реплай)
+    elif "митя" in text_lower or is_reply_to_me:
+        clean_prompt = raw_text
+        if "митя" in text_lower:
+            # Используем регулярку, чтобы убрать только слово "митя"
+            clean_prompt = re.sub(r'\bмитя\b', '', raw_text, flags=re.IGNORECASE).strip()
+            if not clean_prompt: clean_prompt = "Ау"
 
-            reply_to_context = message.reply_to_message.text if is_reply_to_me else None
-            reply_text = await ask_mitya_ai(
-                chat_id,
-                clean_prompt,
-                user_id=user_id,
-                user_name=name,
-                reply_to_text=reply_to_context
-            )
+        reply_to_context = message.reply_to_message.text if is_reply_to_me else None
+        reply_text = await ask_mitya_ai(
+            chat_id,
+            clean_prompt,
+            user_id=user_id,
+            user_name=name,
+            reply_to_text=reply_to_context
+        )
 
-        # В. Случайное вклинивание
-        elif s['reply_chance'] > 0 and random.randint(1, 100) <= s['reply_chance']:
-            is_auto = True
-            reply_text = await ask_mitya_ai(chat_id, raw_text, user_id=user_id, is_auto=True)
+    # В. Случайное вклинивание
+    elif s['reply_chance'] > 0 and random.randint(1, 100) <= s['reply_chance']:
+        is_auto = True
+        reply_text = await ask_mitya_ai(chat_id, raw_text, user_id=user_id, is_auto=True)
 
-        # ОТПРАВКА ТЕКСТА (если он сгенерирован)
-        if reply_text:
-            await bot.send_chat_action(chat_id=chat_id, action="typing")
-            await asyncio.sleep(random.uniform(0.5, 1.5))  # Имитация раздумий
-            if is_auto:
-                await message.answer(reply_text)
-            else:
-                await message.reply(reply_text)
+    # ОТПРАВКА ТЕКСТА
+    if reply_text:
+        await bot.send_chat_action(chat_id=chat_id, action="typing")
+        await asyncio.sleep(random.uniform(0.5, 1.5))
+        if is_auto:
+            await message.answer(reply_text)
+        else:
+            await message.reply(reply_text)
 
 
 # --- ЗАПУСК ---
