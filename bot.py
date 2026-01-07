@@ -33,20 +33,7 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
 
-STICKERS_TOXIC = [
-    "CAACAgIAAxkBAAFAXAdpXr5wkEw5AAH0fqK1Loaiz1lDr6sAAsUqAALzN6hJao_y0kbm4mQ4BA",
-    "CAACAgIAAxkBAAFAXaVpXtJ31OMM0TRW3Pv34kGQy2g_gwACESgAAuEbqUmzMFPvAly6ojgE",
-"CAACAgIAAxkBAAFAXbVpXtK3lPZupp3IHabqCixwTfF-ugACK4wAAo25yUlkSpypXiZG6TgE",
-"CAACAgIAAxkBAAFAXbdpXtLOFImF_bCXo_Cp9KIdJlUQfQACO5gAAnXF2UlaYOIstWdaYzgE",
-"CAACAgIAAxkBAAFAXblpXtLiAAE0HCV8Ii2hUgWAVFLUGWYAAtmMAALOG9hJH1Rw7Ayj55k4BA"
-]
 
-STICKERS_POSITIVE = [
-    "CAACAgIAAxkBAAFAXAdpXr5wkEw5AAH0fqK1Loaiz1lDr6sAAsUqAALzN6hJao_y0kbm4mQ4BA",
-"CAACAgIAAxkBAAFAXbxpXtL75vZHI7NdUofe7mXsjqfIAgAC940AAhwAAXFKJnC5eLqd-y04BA",
-"CAACAgIAAxkBAAFAXb5pXtMBnQLv3tHvT8Kq5smmc73SHwAC3I4AAmkV0UnlFnEn187HszgE"
-
-]
 
 # --- WHISPER  ---
 try:
@@ -72,6 +59,17 @@ def get_chat_lock(chat_id: int) -> asyncio.Lock:
 
 # --- БАЗА ДАННЫХ ---
 async def init_db():
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Таблица для стикеров
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS collected_stickers (
+                file_id TEXT PRIMARY KEY,
+                emoji TEXT,
+                sentiment TEXT
+            )
+        ''')
+        await db.commit()
+
     async with aiosqlite.connect(DB_PATH) as db:
         # Основная таблица
         await db.execute('''
@@ -329,6 +327,33 @@ REP_ADVICE = [
     (-80, "Собеседник — черт. Наезжай на него, груби, поясняй, что он не прав. Никакого уважения."),
     (-100,"Собеседник — твой враг и крыса. Гноби его, унижай морально, смешивай с грязью. Никакой пощады."),
 ]
+
+
+async def ask_mitya_special(prompt, system_instruction):
+    """
+    Универсальная функция для разовых задач (анекдоты, дополнение текста).
+    Не сохраняет историю, работает максимально быстро.
+    """
+    payload = {
+        "model": "mitya-gemma",
+        "messages": [
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": prompt}
+        ],
+        "stream": False,
+        "options": {
+            "temperature": 0.8, # Чуть выше для креативности в анекдотах
+            "num_predict": 150
+        }
+    }
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post("http://ollama:11434/api/chat", json=payload)
+            response.raise_for_status()
+            return response.json()['message']['content'].strip()
+    except Exception as e:
+        logging.error(f"Ошибка в special_ai: {e}")
+        return "Чето не придумывается ниче, брат..."
 
 async def ask_mitya_ai(chat_id: int, user_text: str, user_id: int = None,
                      user_name: str = "Пацан", reply_to_text: str = None, is_auto: bool = False):
@@ -708,6 +733,58 @@ async def settings_chance(callback: CallbackQuery):
         logging.exception("Ошибка обработки chance settings")
 
 
+@dp.message(F.sticker)
+async def catch_stickers_handler(message: types.Message):
+    if message.from_user.id == bot.id:
+        return
+
+    f_id = message.sticker.file_id
+    emoji = message.sticker.emoji or "❓"
+
+    # Быстрая оценка контекста (чтобы не гонять LLM на каждый чих)
+    # Если хочешь идеальной точности, можно вызвать тут check_toxicity_llm(emoji)
+    score = await check_toxicity_llm(f"Стикер с эмодзи: {emoji}")
+
+    if score >= 1:
+        sentiment = "positive"
+    elif score <= -1:
+        sentiment = "toxic"
+    else:
+        sentiment = "neutral"
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO collected_stickers (file_id, emoji, sentiment) VALUES (?, ?, ?)",
+            (f_id, emoji, sentiment)
+        )
+        await db.commit()
+
+
+# --- КОМАНДА: Mit a (Анекдот) ---
+@dp.message(F.text.lower().startswith("mit a"))
+async def mitya_joke_handler(message: types.Message):
+    topic = message.text[5:].strip()
+    sys_instr = "Ты — мастер анекдотов. Рассказывай коротко, смешно, в стиле ростовского пацана."
+    prompt = f"Расскажи анекдот на тему: {topic}" if topic else "Расскажи любой анекдот."
+
+    await bot.send_chat_action(message.chat.id, "typing")
+    joke = await ask_mitya_special(prompt, sys_instr)
+    await message.reply(joke)
+
+
+# --- КОМАНДА: Mit t (Продолжи фразу) ---
+@dp.message(F.text.lower().startswith("mit t"))
+async def mitya_continue_handler(message: types.Message):
+    start_text = message.text[5:].strip()
+    if not start_text:
+        return await message.reply("Напиши че продолжить-то?")
+
+    sys_instr = "Ты — соавтор. Тебе дают начало фразы, ты должен её закончить. Пиши ТОЛЬКО продолжение, кратко и дерзко."
+
+    await bot.send_chat_action(message.chat.id, "typing")
+    continuation = await ask_mitya_special(start_text, sys_instr)
+    await message.answer(f"{start_text} {continuation}")
+
 # --- ГОЛОСОВЫЕ ---
 @dp.message(F.voice)
 async def handle_voice(message: types.Message):
@@ -822,16 +899,23 @@ async def smart_text_handler(message: types.Message):
     rand_val = random.randint(1, 100)
     if 41 <= rand_val <= 55:
         try:
-            sticker_id = None
-            if sentiment == "positive" and STICKERS_POSITIVE:
-                sticker_id = random.choice(STICKERS_POSITIVE)
-            elif sentiment == "toxic" and STICKERS_TOXIC:
-                sticker_id = random.choice(STICKERS_TOXIC)
+            async with aiosqlite.connect(DB_PATH) as db:
+                # Выбираем случайный стикер по нужному настроению
+                cursor = await db.execute(
+                    "SELECT file_id FROM collected_stickers WHERE sentiment = ? ORDER BY RANDOM() LIMIT 1",
+                    (sentiment,)
+                )
+                row = await cursor.fetchone()
 
-            if sticker_id:
-                await message.reply_sticker(sticker=sticker_id)
-        except Exception:
-            pass
+                if row:
+                    sticker_to_send = row[0]
+                    await message.reply_sticker(sticker=sticker_to_send)
+                else:
+                    # Фоллбэк (если база еще пустая)
+                    backup = STICKERS_POSITIVE if sentiment == "positive" else STICKERS_TOXIC
+                    await message.reply_sticker(sticker=random.choice(backup))
+        except Exception as e:
+            logging.error(f"Ошибка при выдаче стикера из БД: {e}")
 
     # --- БЛОК 3: ТЕКСТОВЫЙ ОТВЕТ ИИ (Теперь вне условий стикеров!) ---
     if not s['ai_enabled']:
