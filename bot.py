@@ -801,6 +801,24 @@ async def mitya_continue_handler(message: types.Message):
     # Склеиваем БЕЗ пробела, чтобы можно было дополнять слова
     await message.answer(f"{start_text}{continuation}")
 
+# --- КОМАНДА: Mit s (Случайный стикер) ---
+@dp.message(F.text.lower().startswith("mit s"))
+async def mitya_random_sticker_handler(message: types.Message):
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Выбираем один случайный file_id из всей таблицы
+        cursor = await db.execute(
+            "SELECT file_id FROM collected_stickers ORDER BY RANDOM() LIMIT 1"
+        )
+        row = await cursor.fetchone()
+
+        if row:
+            sticker_id = row[0]
+            # Отправляем стикер как ответ на команду
+            await message.answer_sticker(sticker=sticker_id)
+        else:
+            # Если база еще пустая, Митя ответит по-пацански
+            await message.reply("Пусто в закромах, еще ни одного стикера не подрезал.")
+
 # --- ГОЛОСОВЫЕ ---
 @dp.message(F.voice)
 async def handle_voice(message: types.Message):
