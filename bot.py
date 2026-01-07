@@ -330,6 +330,9 @@ async def ask_mitya_ai(chat_id: int, user_text: str, user_id: int = None,
     # 2. Получаем историю
     history = await get_context(chat_id)
 
+    rep = 0
+    if user_id is not None:
+        rep = await get_user_reputation(chat_id, user_id)
 
     if reply_to_text:
         if history:
@@ -339,8 +342,7 @@ async def ask_mitya_ai(chat_id: int, user_text: str, user_id: int = None,
         else:
             history.insert(0, {"role": "assistant", "content": f"(Контекст: ты отвечаешь на сообщение: {reply_to_text})"})
 
-
-
+    extra_info = "Относись нейтрально."
     for threshold, text in REP_ADVICE:
         if rep >= threshold:
             extra_info = text
@@ -356,7 +358,7 @@ async def ask_mitya_ai(chat_id: int, user_text: str, user_id: int = None,
         "ИНСТРУКЦИЯ ПО ОТНОШЕНИЮ К ЧЕЛОВЕКУ: "
     )
 
-    extra_info = "Относись нейтрально."
+
     try:
         if user_id is not None:
             rep = await get_user_reputation(chat_id, user_id)
@@ -609,7 +611,7 @@ def get_rank_name(rep):
         (60, "🤝 Ровный тип"),
         (40, "🙂 Уважаемый"),
         (10, "👤 Свой пацан"),
-        (0, "👤 Прохожий"),
+        (-5, "👤 Прохожий"),
         (-10, "⚠️ Мутный тип"),
         (-40, "⚠️ Неприятный"),
         (-60, "❌ Чушпан"),
@@ -707,12 +709,12 @@ async def settings_chance(callback: CallbackQuery):
 async def handle_voice(message: types.Message):
     if whisper_model is None:
         logging.warning("Whisper model not loaded")
-        return await message.reply("Голосовой модуль недоступен.")  # Добавлен return
+        return await message.reply("Голосовой модуль недоступен.")
 
-    segments, info = await asyncio.to_thread(whisper_model.transcribe, path, beam_size=1, language="ru")
     # Ограничение длительности
     if message.voice.duration > 60:
         return await message.reply("Слышь, я такие длинные телеги не слушаю. Давай короче, до минуты!")
+
     s = await get_chat_settings(message.chat.id)
     if not s['voice_enabled']:
         return
@@ -720,7 +722,6 @@ async def handle_voice(message: types.Message):
     await bot.send_chat_action(chat_id=message.chat.id, action="upload_voice")
     file = await bot.get_file(message.voice.file_id)
 
-    # используем tempfile для безопасного создания уникального файла
     tf = tempfile.NamedTemporaryFile(suffix=".ogg", delete=False)
     path = tf.name
     tf.close()
@@ -787,16 +788,14 @@ async def smart_text_handler(message: types.Message):
 
 
     # --- ЛОГИКА ЭМОЦИЙ МИТИ ---
-    rand_val = random.randint(1, 100)
 
-
-    score = await check_toxicity_llm(raw_text)  # int
+    # 1. Оценка токсичности (один раз на весь хендлер)
+    score = await check_toxicity_llm(raw_text)
+    sentiment = "neutral"
     if score > 0:
         sentiment = "positive"
     elif score < 0:
         sentiment = "toxic"
-    else:
-        sentiment = "neutral"
 
     # 2. Обновление кармы
     if not is_bot and not is_forward:
@@ -804,85 +803,77 @@ async def smart_text_handler(message: types.Message):
         if should_check_karma and score != 0:
             await update_reputation(chat_id, user_id, name, score)
 
-    s = await get_chat_settings(chat_id)  # получать настройки дальше по логике
+    s = await get_chat_settings(chat_id)
+    rand_val = random.randint(1, 100)
 
-    # СТАВИМ РЕАКЦИЮ
+    # --- БЛОК 1: РЕАКЦИИ (не мешает остальному) ---
     if rand_val <= 40:
         EMOJI_MAP = {
-            "positive": ["🔥", "👍", "🤝", "😎"],
-            "toxic": ["💩", "🤡", "👎", "🤨"],
+            "positive": ["🔥", "👍", "😎"],
+            "toxic": ["👎", "🤨", "🤡"],
             "neutral": ["👀", "🤝"]
         }
         try:
-            await asyncio.sleep(random.uniform(1, 2))  # Имитация чтения
             emo = random.choice(EMOJI_MAP.get(sentiment, ["👀"]))
             await message.react([types.ReactionTypeEmoji(emoji=emo)])
         except Exception:
             pass
-    elif rand_val <= 55:
-        try:
-            # Показываем, что бот "печатает"
-            await bot.send_chat_action(chat_id=chat_id, action="typing")
-            await asyncio.sleep(1)  # небольшая пауза
 
-            # Выбираем стикер по настроению
+    # --- БЛОК 2: СТИКЕРЫ (не мешает остальному) ---
+    # Добавляем шанс 15% на стикер (независимо от реакции)
+    if 41 <= rand_val <= 55:
+        try:
+            sticker_id = None
             if sentiment == "positive" and STICKERS_POSITIVE:
                 sticker_id = random.choice(STICKERS_POSITIVE)
-                await message.reply_sticker(sticker=sticker_id)
-
             elif sentiment == "toxic" and STICKERS_TOXIC:
                 sticker_id = random.choice(STICKERS_TOXIC)
+
+            if sticker_id:
                 await message.reply_sticker(sticker=sticker_id)
+        except Exception:
+            pass
 
-            # Нейтральные — можно не показывать стикеры, или добавить свои
-            # elif sentiment == "neutral" and STICKERS_NEUTRAL:
-            #     await message.reply_sticker(random.choice(STICKERS_NEUTRAL))
-
-        except Exception as e:
-            logging.exception(f"Ошибка отправки стикера: {e}")
-
-
-
-    # 2. Личка — отвечаем всем
-    if is_private:
-        if s['ai_enabled']:
-            reply = await ask_mitya_ai(chat_id, raw_text, user_id=user_id)
-            if reply:
-                await message.answer(reply)
-        return
-
-    # 3. Ответ на сообщение бота ИЛИ явный вызов "Митя"
-    if "митя" in text or is_reply_to_me:
+        # --- БЛОК 3: ТЕКСТОВЫЙ ОТВЕТ ИИ ---
         if not s['ai_enabled']:
             return
 
-        # Если это ответ на сообщение бота, добавим контекст того сообщения
-        full_prompt = raw_text
-        if is_reply_to_me and message.reply_to_message.text:
-            # Формируем промпт так, чтобы ИИ понимал, на что он отвечает
-            full_prompt = f"(Ответ на твоё сообщение: '{message.reply_to_message.text}') {raw_text}"
+        reply_text = None
+        is_auto = False
 
-        # Очистка от слова "митя" для группы, если оно там есть
-        clean_prompt = full_prompt
-        if "митя" in text:
-            try:
-                idx = raw_text.lower().find("митя")
-                clean_prompt = (raw_text[:idx] + raw_text[idx + len("митя"):]).strip()
-            except Exception:
-                clean_prompt = raw_text.replace("митя", "").strip()
+        # А. Логика для лички
+        if is_private:
+            reply_text = await ask_mitya_ai(chat_id, raw_text, user_id=user_id)
 
-        reply = await ask_mitya_ai(chat_id, clean_prompt, user_id=user_id)
-        if reply:
-            await message.reply(reply)  # Отвечаем реплаем для удобства диалога
-        return
+        # Б. Логика для групп (обращение или реплай)
+        elif "митя" in text_lower or is_reply_to_me:
+            clean_prompt = raw_text
+            if "митя" in text_lower:
+                # Чистим имя из запроса
+                clean_prompt = re.sub(r'\bмитя\b', '', raw_text, flags=re.IGNORECASE).strip()
 
-    # 4. Случайное вклинивание
-    if s['ai_enabled'] and s['reply_chance'] > 0:
-        if random.randint(1, 100) <= s['reply_chance']:
+            reply_to_context = message.reply_to_message.text if is_reply_to_me else None
+            reply_text = await ask_mitya_ai(
+                chat_id,
+                clean_prompt,
+                user_id=user_id,
+                user_name=name,
+                reply_to_text=reply_to_context
+            )
+
+        # В. Случайное вклинивание
+        elif s['reply_chance'] > 0 and random.randint(1, 100) <= s['reply_chance']:
+            is_auto = True
+            reply_text = await ask_mitya_ai(chat_id, raw_text, user_id=user_id, is_auto=True)
+
+        # ОТПРАВКА ТЕКСТА (если он сгенерирован)
+        if reply_text:
             await bot.send_chat_action(chat_id=chat_id, action="typing")
-            reply = await ask_mitya_ai(chat_id, raw_text, user_id=user_id, is_auto=True)
-            if reply:
-                await message.answer(reply)
+            await asyncio.sleep(random.uniform(0.5, 1.5))  # Имитация раздумий
+            if is_auto:
+                await message.answer(reply_text)
+            else:
+                await message.reply(reply_text)
 
 
 # --- ЗАПУСК ---
