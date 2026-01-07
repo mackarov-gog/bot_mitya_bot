@@ -779,15 +779,27 @@ async def mitya_joke_handler(message: types.Message):
 # --- КОМАНДА: Mit t (Продолжи фразу) ---
 @dp.message(F.text.lower().startswith("mit t"))
 async def mitya_continue_handler(message: types.Message):
-    start_text = message.text[5:].strip()
-    if not start_text:
-        return await message.reply("Напиши че продолжить-то?")
+    # Вырезаем префикс "mit t " аккуратно
+    start_text = message.text[5:].lstrip()
 
-    sys_instr = "Ты — соавтор. Тебе дают начало фразы, ты должен её закончить. Пиши ТОЛЬКО продолжение, кратко и дерзко."
+    if not start_text:
+        return await message.reply("Напиши, че продолжить-то? Можешь даже слово не дописывать.")
+
+    # Обновленный системный промпт для склейки слов
+    sys_instr = (
+        "Ты — соавтор. Тебе дают начало текста (возможно, оборванное на полуслове). "
+        "Твоя задача: ПРЯМО ПРОДОЛЖИТЬ текст без пробелов в начале, если это логично. "
+        "Пиши ТОЛЬКО продолжение. Стиль: кратко, дерзко, по-пацански."
+    )
 
     await bot.send_chat_action(message.chat.id, "typing")
     continuation = await ask_mitya_special(start_text, sys_instr)
-    await message.answer(f"{start_text} {continuation}")
+
+    # Убираем лишние пробелы в начале ответа ИИ, если он их всё же добавил
+    continuation = continuation.lstrip()
+
+    # Склеиваем БЕЗ пробела, чтобы можно было дополнять слова
+    await message.answer(f"{start_text}{continuation}")
 
 # --- ГОЛОСОВЫЕ ---
 @dp.message(F.voice)
