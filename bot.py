@@ -8,6 +8,7 @@ import logging
 import aiosqlite
 import requests
 import tempfile
+from bs4 import BeautifulSoup
 from faster_whisper import WhisperModel
 from datetime import datetime
 from typing import Dict
@@ -116,6 +117,34 @@ async def init_db():
 
         await db.commit()
 
+
+async def mit_info_search(query: str):
+    """Парсинг DuckDuckGo HTML для Mit Info"""
+    url = "https://html.duckduckgo.com/html/"
+    payload = {'q': query}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://duckduckgo.com/"
+    }
+    try:
+        # Используем httpx, так как он уже есть в твоем проекте
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(url, data=payload, headers=headers)
+            if response.status_code != 200:
+                return None
+
+            soup = BeautifulSoup(response.text, 'html.parser')
+            results = []
+            for result in soup.find_all('div', class_='result'):
+                snippet_tag = result.find('a', class_='result__snippet')
+                if snippet_tag:
+                    text = snippet_tag.get_text(strip=True)
+                    results.append(re.sub(r'\s+', ' ', text))
+
+            return "\n\n".join(results[:3]) if results else None
+    except Exception as e:
+        logging.error(f"Search error: {e}")
+        return None
 
 async def get_chat_settings(chat_id):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -765,7 +794,7 @@ async def catch_stickers_handler(message: types.Message):
 
 
 # --- КОМАНДА: Mit a (Анекдот) ---
-@dp.message(F.text.lower().startswith("mit a"))
+@dp.message(F.text.lower().startswith("mit a") | F.text.lower().startswith("мит а"))
 async def mitya_joke_handler(message: types.Message):
     topic = message.text[5:].strip()
     sys_instr = "Ты — мастер анекдотов. Рассказывай коротко, смешно, в стиле ростовского пацана."
@@ -777,7 +806,7 @@ async def mitya_joke_handler(message: types.Message):
 
 
 # --- КОМАНДА: Mit t (Продолжи фразу) ---
-@dp.message(F.text.lower().startswith("mit t"))
+@dp.message(F.text.lower().startswith("mit t") | F.text.lower().startswith("мит т"))
 async def mitya_continue_handler(message: types.Message):
     # Вырезаем префикс "mit t " аккуратно
     start_text = message.text[5:].lstrip()
@@ -802,7 +831,7 @@ async def mitya_continue_handler(message: types.Message):
     await message.answer(f"{start_text}{continuation}")
 
 # --- КОМАНДА: Mit s (Случайный стикер) ---
-@dp.message(F.text.lower().startswith("mit s"))
+@dp.message(F.text.lower().startswith("mit s") | F.text.lower().startswith("мит c"))
 async def mitya_random_sticker_handler(message: types.Message):
     async with aiosqlite.connect(DB_PATH) as db:
         # Выбираем один случайный file_id из всей таблицы
@@ -818,6 +847,38 @@ async def mitya_random_sticker_handler(message: types.Message):
         else:
             # Если база еще пустая, Митя ответит по-пацански
             await message.reply("Пусто в закромах, еще ни одного стикера не подрезал.")
+
+# --- КОМАНДА: Mit i (Пробить инфу) ---
+@dp.message(F.text.lower().startswith("mit i") | F.text.lower().startswith("мит и"))
+async def mitya_web_search_handler(message: types.Message):
+    # Извлекаем сам запрос
+    if message.text.lower().startswith("митя, пробни"):
+        query = message.text[12:].strip()
+    else:
+        query = message.text[8:].strip()
+
+    if not query:
+        return await message.reply("А че пробивать-то? Пиши запрос после команды, не тупи.")
+
+    await bot.send_chat_action(message.chat.id, "typing")
+
+    # 1. Лезем в инет
+    raw_info = await mit_info_search(query)
+
+    if not raw_info:
+        return await message.reply("Слышь, в инете по этой теме глухо, как в танке.")
+
+    # 2. Просим ИИ пересказать инфу
+    sys_instr = (
+        "Ты — Митя. Тебе принесли инфу из интернета. "
+        "Твоя задача: коротко (2-3 предложения) пояснить корешу суть на ростовском сленге. "
+        "Не читай лекций, говори как в жизни."
+    )
+    prompt = f"Вот инфа из поиска: {raw_info}\n\nПоясни за это: {query}"
+
+    mitya_explanation = await ask_mitya_special(prompt, sys_instr)
+
+    await message.reply(f"🔍 **Mit Info докладывает:**\n\n{mitya_explanation}")
 
 # --- ГОЛОСОВЫЕ ---
 @dp.message(F.voice)
