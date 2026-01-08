@@ -6,4 +6,4 @@ setuptools-rust
 aiosqlite
 httpx
 asyncio
-BeautifulSoup
+beautifulsoup4
