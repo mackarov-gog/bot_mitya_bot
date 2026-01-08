@@ -5,3 +5,5 @@ faster-whisper
 setuptools-rust
 aiosqlite
 httpx
+asyncio
+BeautifulSoup
