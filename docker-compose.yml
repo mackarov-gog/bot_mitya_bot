@@ -9,7 +9,7 @@ services:
       - ollama_data:/root/.ollama
       - /root/models:/models
     healthcheck:
-      test: ["CMD-SHELL", "cat < /dev/null > /dev/tcp/localhost/11434"]
+      test: ["CMD", "ollama", "list"]
       interval: 10s
       timeout: 5s
       retries: 5
