@@ -335,7 +335,7 @@ Answer:
                 "model": "mitya-gemma",
                 "prompt": prompt,
                 "stream": False,
-                "options": {"num_predict": 3, "temperature": 0.0, "top_k": 1, "stop": ["\n", " "] }
+                "options": {"num_predict": 3, "temperature": 0.0 }
             })
             resp_json = response.json()
             raw_result = (resp_json.get("response") or "").strip()
