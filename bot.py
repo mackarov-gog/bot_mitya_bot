@@ -442,7 +442,7 @@ async def ask_mitya_ai(chat_id: int, user_text: str, user_id: int = None,
     lock = get_chat_lock(chat_id)
     async with lock:
         try:
-            async with httpx.AsyncClient(timeout=40.0) as client:
+            async with httpx.AsyncClient(timeout=140.0) as client:
                 response = await client.post("http://ollama:11434/api/chat", json=payload)
                 response.raise_for_status()
                 resp_json = response.json()
@@ -1056,16 +1056,29 @@ async def smart_text_handler(message: types.Message):
     # В. Случайное вклинивание
     elif s['reply_chance'] > 0 and random.randint(1, 100) <= s['reply_chance']:
         is_auto = True
-        reply_text = await ask_mitya_ai(chat_id, raw_text, user_id=user_id, is_auto=True)
+        reply_text = await ask_mitya_ai(chat_id, raw_text, user_id=user_id, user_name=name, is_auto=True)
 
     # ОТПРАВКА ТЕКСТА
     if reply_text:
-        await bot.send_chat_action(chat_id=chat_id, action="typing")
-        await asyncio.sleep(random.uniform(0.5, 1.5))
-        if is_auto:
-            await message.answer(reply_text)
-        else:
-            await message.reply(reply_text)
+        try:
+            await bot.send_chat_action(chat_id=chat_id, action="typing")
+            await asyncio.sleep(random.uniform(0.5, 1.5))
+
+            if is_auto:
+                await message.answer(reply_text)
+            else:
+                await message.reply(reply_text)
+
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "forbidden" in error_msg or "chat not found" in error_msg:
+                logging.error(f"⚠️ Митю забанили в чате {chat_id}. Не могу отправить сообщение.")
+            elif "not enough rights" in error_msg:
+                logging.error(f"🚫 У Мити нет прав писать в чате {chat_id}.")
+            else:
+                logging.error(f"❌ Ошибка при отправке сообщения в {chat_id}: {e}")
+
+            return
 
 
 # --- ЗАПУСК ---
