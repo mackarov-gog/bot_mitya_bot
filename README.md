@@ -136,6 +136,7 @@
 * **SQLite (aiosqlite)**
 * **Docker / Docker Compose**
 * **Httpx**
+* **Gemma-3-1B** (сейчас на сервере)
 
 ---
 
