@@ -314,7 +314,7 @@ async def check_toxicity_llm(text: str) -> int:
     )
 
     try:
-        async with httpx.AsyncClient(timeout=7.0) as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(url, json={
                 "model": "mitya-gemma",
                 "prompt": prompt,
@@ -442,7 +442,7 @@ async def ask_mitya_ai(chat_id: int, user_text: str, user_id: int = None,
     lock = get_chat_lock(chat_id)
     async with lock:
         try:
-            async with httpx.AsyncClient(timeout=140.0) as client:
+            async with httpx.AsyncClient(timeout=80.0) as client:
                 response = await client.post("http://ollama:11434/api/chat", json=payload)
                 response.raise_for_status()
                 resp_json = response.json()
@@ -974,8 +974,8 @@ async def smart_text_handler(message: types.Message):
     if not is_bot and not is_forward:
         #should_check_karma = is_private or ("митя" in text_lower) or is_reply_to_me
         #if should_check_karma and score != 0:
-        if score != 0:
-            await update_reputation(chat_id, user_id, name, score)
+
+        await update_reputation(chat_id, user_id, name, score)
 
     s = await get_chat_settings(chat_id)
 
