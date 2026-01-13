@@ -378,10 +378,7 @@ async def ask_mitya_special(prompt, system_instruction):
 
 async def ask_mitya_ai(chat_id: int, user_text: str, user_id: int = None,
                      user_name: str = "Пацан", reply_to_text: str = None, is_auto: bool = False):
-    # 1. Сохраняем с именем
-    await save_context(chat_id, "user", user_text, user_name)
-
-    # 2. Получаем историю
+    # Получаем историю
     history = await get_context(chat_id)
 
     rep = 0
@@ -919,6 +916,10 @@ async def handle_voice(message: types.Message):
         if not raw_text:
             return await message.answer("Тишина в эфире...")
 
+        user_id, name, is_bot, username = extract_sender_info(message)
+        if not is_bot and raw_text.strip():
+            await save_context(message.chat.id, "user", raw_text, name)
+
         # Анализ через новую функцию
         score = await check_toxicity_llm(raw_text)
 
@@ -962,6 +963,10 @@ async def smart_text_handler(message: types.Message):
             message.reply_to_message.from_user.id == bot.id
     )
 
+    # Сохраняем сообщение пользователя в историю
+    if not is_bot and not is_forward and raw_text.strip():
+        await save_context(chat_id, "user", raw_text, name)
+
     # 1. Оценка токсичности
     score = await check_toxicity_llm(raw_text)
     sentiment = "neutral"
@@ -990,7 +995,7 @@ async def smart_text_handler(message: types.Message):
     ],
     "toxic": [
         "👎", "🤡", "🤨", "🖕", "😒", "🤬", "🤮", "💩", "🗑️", "😤",
-        "🤡🤡", "🙄", "😑", "🤦‍♂️", "🤦", "🐍", "🤢", "🚮", "😡"
+        "🤡", "🙄", "😑", "🤦‍♂️", "🤦", "🐍", "🤢", "🚮", "😡"
     ],
     "neutral": [
         "👀", "🤝", "😐", "🤔", "👌", "🔍", "📊", "💭", "🧐", "🤷",
